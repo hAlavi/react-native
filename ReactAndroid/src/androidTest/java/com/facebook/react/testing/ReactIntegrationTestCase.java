@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2014-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,6 +7,7 @@
 
 package com.facebook.react.testing;
 
+import com.facebook.react.modules.core.ReactChoreographer;
 import javax.annotation.Nullable;
 
 import java.util.concurrent.CountDownLatch;
@@ -14,7 +15,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 import android.app.Application;
-import android.support.test.InstrumentationRegistry;
 import android.test.AndroidTestCase;
 import android.view.View;
 import android.view.ViewGroup;
@@ -139,6 +139,7 @@ public abstract class ReactIntegrationTestCase extends AndroidTestCase {
         new Runnable() {
           @Override
           public void run() {
+            ReactChoreographer.initialize();
             Timing timing = new Timing(getContext(), mock(DevSupportManager.class));
             simpleSettableFuture.set(timing);
           }
@@ -162,7 +163,9 @@ public abstract class ReactIntegrationTestCase extends AndroidTestCase {
   }
 
   public void waitForIdleSync() {
-    InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    return;
+    // TODO: re-enable after cleanup of android-x migration
+    //InstrumentationRegistry.getInstrumentation().waitForIdleSync();
   }
 
   public void waitForBridgeAndUIIdle() {

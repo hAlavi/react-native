@@ -1,13 +1,13 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-#import <Foundation/Foundation.h>
-
 #import "RCTI18nUtil.h"
+
+#import <UIKit/UIKit.h>
 
 @implementation RCTI18nUtil
 
@@ -98,9 +98,8 @@
 // Check if the current application language is RTL
 - (BOOL)isApplicationPreferredLanguageRTL
 {
-  NSString *preferredAppLanguage = [[[NSBundle mainBundle] preferredLocalizations] objectAtIndex:0];
-  NSLocaleLanguageDirection direction = [NSLocale characterDirectionForLanguage:preferredAppLanguage];
-  return direction == NSLocaleLanguageDirectionRightToLeft;
+  NSWritingDirection direction = [NSParagraphStyle defaultWritingDirectionForLanguage:nil];
+  return direction == NSWritingDirectionRightToLeft;
 }
 
 @end

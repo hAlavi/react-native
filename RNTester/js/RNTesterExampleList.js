@@ -1,34 +1,29 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
+ * @format
  * @flow
- * @providesModule RNTesterExampleList
  */
+
 'use strict';
 
-const Platform = require('Platform');
 const React = require('react');
-const SectionList = require('SectionList');
-const StyleSheet = require('StyleSheet');
-const Text = require('Text');
-const TextInput = require('TextInput');
-const TouchableHighlight = require('TouchableHighlight');
+const {
+  Platform,
+  SectionList,
+  StyleSheet,
+  Text,
+  TouchableHighlight,
+  View,
+} = require('react-native');
 const RNTesterActions = require('./RNTesterActions');
-const RNTesterStatePersister = require('./RNTesterStatePersister');
-const View = require('View');
+const RNTesterExampleFilter = require('./RNTesterExampleFilter');
 
-import type {
-  RNTesterExample,
-} from './RNTesterList.ios';
-import type {
-  PassProps,
-} from './RNTesterStatePersister';
-import type {
-  StyleObj,
-} from 'StyleSheetTypes';
+import type {RNTesterExample} from './Shared/RNTesterTypes';
+import type {ViewStyleProp} from '../../Libraries/StyleSheet/StyleSheet';
 
 type Props = {
   onNavigate: Function,
@@ -36,9 +31,7 @@ type Props = {
     ComponentExamples: Array<RNTesterExample>,
     APIExamples: Array<RNTesterExample>,
   },
-  persister: PassProps<*>,
-  searchTextInputStyle: StyleObj,
-  style?: ?StyleObj,
+  style?: ?ViewStyleProp,
 };
 
 class RowComponent extends React.PureComponent<{
@@ -58,63 +51,64 @@ class RowComponent extends React.PureComponent<{
   render() {
     const {item} = this.props;
     return (
-      <TouchableHighlight {...this.props} onPress={this._onPress}>
+      <TouchableHighlight
+        onShowUnderlay={this.props.onShowUnderlay}
+        onHideUnderlay={this.props.onHideUnderlay}
+        onPress={this._onPress}>
         <View style={styles.row}>
-          <Text style={styles.rowTitleText}>
-            {item.module.title}
-          </Text>
-          <Text style={styles.rowDetailText}>
-            {item.module.description}
-          </Text>
+          <Text style={styles.rowTitleText}>{item.module.title}</Text>
+          <Text style={styles.rowDetailText}>{item.module.description}</Text>
         </View>
       </TouchableHighlight>
     );
   }
 }
 
-const renderSectionHeader = ({section}) =>
-  <Text style={styles.sectionHeader}>
-    {section.title}
-  </Text>;
+const renderSectionHeader = ({section}) => (
+  <Text style={styles.sectionHeader}>{section.title}</Text>
+);
 
 class RNTesterExampleList extends React.Component<Props, $FlowFixMeState> {
   render() {
-    const filterText = this.props.persister.state.filter;
-    const filterRegex = new RegExp(String(filterText), 'i');
-    const filter = (example) =>
-      this.props.disableSearch ||
-        filterRegex.test(example.module.title) &&
-        (!Platform.isTVOS || example.supportsTVOS);
+    const filter = ({example, filterRegex}) =>
+      filterRegex.test(example.module.title) &&
+      (!Platform.isTV || example.supportsTVOS);
 
     const sections = [
       {
-        data: this.props.list.ComponentExamples.filter(filter),
+        data: this.props.list.ComponentExamples,
         title: 'COMPONENTS',
         key: 'c',
       },
       {
-        data: this.props.list.APIExamples.filter(filter),
+        data: this.props.list.APIExamples,
         title: 'APIS',
         key: 'a',
       },
     ];
+
     return (
       <View style={[styles.listContainer, this.props.style]}>
         {this._renderTitleRow()}
-        {this._renderTextInput()}
-        <SectionList
-          ItemSeparatorComponent={ItemSeparator}
-          contentContainerStyle={{backgroundColor: 'white'}}
-          style={styles.list}
+        <RNTesterExampleFilter
+          testID="explorer_search"
           sections={sections}
-          renderItem={this._renderItem}
-          enableEmptySections={true}
-          itemShouldUpdate={this._itemShouldUpdate}
-          keyboardShouldPersistTaps="handled"
-          automaticallyAdjustContentInsets={false}
-          keyboardDismissMode="on-drag"
-          legacyImplementation={false}
-          renderSectionHeader={renderSectionHeader}
+          filter={filter}
+          render={({filteredSections}) => (
+            <SectionList
+              ItemSeparatorComponent={ItemSeparator}
+              contentContainerStyle={styles.sectionListContentContainer}
+              style={styles.list}
+              sections={filteredSections}
+              renderItem={this._renderItem}
+              enableEmptySections={true}
+              itemShouldUpdate={this._itemShouldUpdate}
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustContentInsets={false}
+              keyboardDismissMode="on-drag"
+              renderSectionHeader={renderSectionHeader}
+            />
+          )}
         />
       </View>
     );
@@ -134,43 +128,25 @@ class RNTesterExampleList extends React.Component<Props, $FlowFixMeState> {
   );
 
   _renderTitleRow(): ?React.Element<any> {
+    /* $FlowFixMe(>=0.68.0 site=react_native_fb) This comment suppresses an
+     * error found when Flow v0.68 was deployed. To see the error delete this
+     * comment and run Flow. */
     if (!this.props.displayTitleRow) {
       return null;
     }
     return (
       <RowComponent
-        item={{module: {
-          title: 'RNTester',
-          description: 'React Native Examples',
-        }}}
+        item={{
+          module: {
+            title: 'RNTester',
+            description: 'React Native Examples',
+          },
+        }}
         onNavigate={this.props.onNavigate}
         onPress={() => {
           this.props.onNavigate(RNTesterActions.ExampleList());
         }}
       />
-    );
-  }
-
-  _renderTextInput(): ?React.Element<any> {
-    if (this.props.disableSearch) {
-      return null;
-    }
-    return (
-      <View style={styles.searchRow}>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          clearButtonMode="always"
-          onChangeText={text => {
-            this.props.persister.setState(() => ({filter: text}));
-          }}
-          placeholder="Search..."
-          underlineColorAndroid="transparent"
-          style={[styles.searchTextInput, this.props.searchTextInputStyle]}
-          testID="explorer_search"
-          value={this.props.persister.state.filter}
-        />
-      </View>
     );
   }
 
@@ -182,11 +158,6 @@ class RNTesterExampleList extends React.Component<Props, $FlowFixMeState> {
 const ItemSeparator = ({highlighted}) => (
   <View style={highlighted ? styles.separatorHighlighted : styles.separator} />
 );
-
-RNTesterExampleList = RNTesterStatePersister.createContainer(RNTesterExampleList, {
-  cacheKeySuffix: () => 'mainList',
-  getInitialState: () => ({filter: ''}),
-});
 
 const styles = StyleSheet.create({
   listContainer: {
@@ -216,6 +187,9 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgb(217, 217, 217)',
   },
+  sectionListContentContainer: {
+    backgroundColor: 'white',
+  },
   rowTitleText: {
     fontSize: 17,
     fontWeight: '500',
@@ -224,19 +198,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#888888',
     lineHeight: 20,
-  },
-  searchRow: {
-    backgroundColor: '#eeeeee',
-    padding: 10,
-  },
-  searchTextInput: {
-    backgroundColor: 'white',
-    borderColor: '#cccccc',
-    borderRadius: 3,
-    borderWidth: 1,
-    paddingLeft: 8,
-    paddingVertical: 0,
-    height: 35,
   },
 });
 

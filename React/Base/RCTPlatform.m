@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -38,6 +38,11 @@ RCT_EXPORT_MODULE(PlatformConstants)
 
 - (NSDictionary<NSString *, id> *)constantsToExport
 {
+  return [self getConstants];
+}
+
+- (NSDictionary<NSString *, id> *)getConstants
+{
   UIDevice *device = [UIDevice currentDevice];
   return @{
     @"forceTouchAvailable": @(RCTForceTouchAvailable()),
@@ -45,7 +50,7 @@ RCT_EXPORT_MODULE(PlatformConstants)
     @"systemName": [device systemName],
     @"interfaceIdiom": interfaceIdiom([device userInterfaceIdiom]),
     @"isTesting": @(RCTRunningInTestEnvironment()),
-    @"reactNativeVersion": RCT_REACT_NATIVE_VERSION,
+    @"reactNativeVersion": RCTGetReactNativeVersion(),
   };
 }
 

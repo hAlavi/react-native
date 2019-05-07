@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,6 +11,8 @@
 #import <React/RCTComponent.h>
 #import <React/RCTPointerEvents.h>
 #import <React/RCTView.h>
+
+extern const UIAccessibilityTraits SwitchAccessibilityTrait;
 
 @protocol RCTAutoInsetsProtocol;
 
@@ -24,11 +26,14 @@
 @property (nonatomic, copy) RCTDirectEventBlock onAccessibilityAction;
 @property (nonatomic, copy) RCTDirectEventBlock onAccessibilityTap;
 @property (nonatomic, copy) RCTDirectEventBlock onMagicTap;
+@property (nonatomic, copy) RCTDirectEventBlock onAccessibilityEscape;
 
 /**
  * Accessibility properties
  */
 @property (nonatomic, copy) NSArray <NSString *> *accessibilityActions;
+@property (nonatomic, copy) NSString *accessibilityRole;
+@property (nonatomic, copy) NSArray <NSString *> *accessibilityStates;
 
 /**
  * Used to control how touch events are processed.

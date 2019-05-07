@@ -1,15 +1,15 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @providesModule KeyboardAvoidingViewExample
+ * @format
  */
+
 'use strict';
 
-const React = require('React');
-const ReactNative = require('react-native');
+const React = require('react');
 const {
   KeyboardAvoidingView,
   Modal,
@@ -19,15 +19,18 @@ const {
   TextInput,
   TouchableHighlight,
   View,
-} = ReactNative;
+} = require('react-native');
 
 const RNTesterBlock = require('./RNTesterBlock');
 const RNTesterPage = require('./RNTesterPage');
 
-class KeyboardAvoidingViewExample extends React.Component {
-  static title = '<KeyboardAvoidingView>';
-  static description = 'Base component for views that automatically adjust their height or position to move out of the way of the keyboard.';
+type Props = $ReadOnly<{||}>;
+type State = {|
+  behavior: string,
+  modalOpen: boolean,
+|};
 
+class KeyboardAvoidingViewExample extends React.Component<Props, State> {
   state = {
     behavior: 'padding',
     modalOpen: false,
@@ -41,15 +44,16 @@ class KeyboardAvoidingViewExample extends React.Component {
     return (
       <View style={styles.outerContainer}>
         <Modal animationType="fade" visible={this.state.modalOpen}>
-          <KeyboardAvoidingView behavior={this.state.behavior} style={styles.container}>
+          <KeyboardAvoidingView
+            behavior={this.state.behavior}
+            style={styles.container}>
             <SegmentedControlIOS
               onValueChange={this.onSegmentChange}
               selectedIndex={this.state.behavior === 'padding' ? 0 : 1}
               style={styles.segment}
-              values={['Padding', 'Position']} />
-            <TextInput
-              placeholder="<TextInput />"
-              style={styles.textInput} />
+              values={['Padding', 'Position']}
+            />
+            <TextInput placeholder="<TextInput />" style={styles.textInput} />
           </KeyboardAvoidingView>
           <TouchableHighlight
             onPress={() => this.setState({modalOpen: false})}
@@ -99,7 +103,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 30,
     left: 10,
-  }
+  },
 });
 
-module.exports = KeyboardAvoidingViewExample;
+exports.title = '<KeyboardAvoidingView>';
+exports.description =
+  'Base component for views that automatically adjust their height or position to move out of the way of the keyboard.';
+exports.examples = [
+  {
+    title: 'Simple keyboard view',
+    render: function(): React.Element<typeof KeyboardAvoidingViewExample> {
+      return <KeyboardAvoidingViewExample />;
+    },
+  },
+];

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -23,21 +23,29 @@
 #import "RCTUtils.h"
 
 NSString *const RCTJavaScriptWillStartLoadingNotification = @"RCTJavaScriptWillStartLoadingNotification";
+NSString *const RCTJavaScriptWillStartExecutingNotification = @"RCTJavaScriptWillStartExecutingNotification";
 NSString *const RCTJavaScriptDidLoadNotification = @"RCTJavaScriptDidLoadNotification";
 NSString *const RCTJavaScriptDidFailToLoadNotification = @"RCTJavaScriptDidFailToLoadNotification";
 NSString *const RCTDidInitializeModuleNotification = @"RCTDidInitializeModuleNotification";
+NSString *const RCTDidSetupModuleNotification = @"RCTDidSetupModuleNotification";
+NSString *const RCTDidSetupModuleNotificationModuleNameKey = @"moduleName";
+NSString *const RCTDidSetupModuleNotificationSetupTimeKey = @"setupTime";
 NSString *const RCTBridgeWillReloadNotification = @"RCTBridgeWillReloadNotification";
 NSString *const RCTBridgeWillDownloadScriptNotification = @"RCTBridgeWillDownloadScriptNotification";
 NSString *const RCTBridgeDidDownloadScriptNotification = @"RCTBridgeDidDownloadScriptNotification";
 NSString *const RCTBridgeDidDownloadScriptNotificationSourceKey = @"source";
+NSString *const RCTBridgeDidDownloadScriptNotificationBridgeDescriptionKey = @"bridgeDescription";
 
 static NSMutableArray<Class> *RCTModuleClasses;
+static dispatch_queue_t RCTModuleClassesSyncQueue;
 NSArray<Class> *RCTGetModuleClasses(void)
 {
-  return RCTModuleClasses;
+  __block NSArray<Class> *result;
+  dispatch_sync(RCTModuleClassesSyncQueue, ^{
+    result = [RCTModuleClasses copy];
+  });
+  return result;
 }
-
-void RCTFBQuickPerformanceLoggerConfigureHooks(__unused JSGlobalContextRef ctx) { }
 
 /**
  * Register the given class as a bridge module. All modules must be registered
@@ -49,6 +57,7 @@ void RCTRegisterModule(Class moduleClass)
   static dispatch_once_t onceToken;
   dispatch_once(&onceToken, ^{
     RCTModuleClasses = [NSMutableArray new];
+    RCTModuleClassesSyncQueue = dispatch_queue_create("com.facebook.react.ModuleClassesSyncQueue", DISPATCH_QUEUE_CONCURRENT);
   });
 
   RCTAssert([moduleClass conformsToProtocol:@protocol(RCTBridgeModule)],
@@ -56,7 +65,9 @@ void RCTRegisterModule(Class moduleClass)
             moduleClass);
 
   // Register module
-  [RCTModuleClasses addObject:moduleClass];
+  dispatch_barrier_async(RCTModuleClassesSyncQueue, ^{
+    [RCTModuleClasses addObject:moduleClass];
+  });
 }
 
 /**
@@ -74,13 +85,17 @@ NSString *RCTBridgeModuleNameForClass(Class cls)
     name = NSStringFromClass(cls);
   }
 
-  if ([name hasPrefix:@"RK"]) {
-    name = [name substringFromIndex:2];
-  } else if ([name hasPrefix:@"RCT"]) {
-    name = [name substringFromIndex:3];
-  }
+  return RCTDropReactPrefixes(name);
+}
 
-  return name;
+static BOOL turboModuleEnabled = NO;
+BOOL RCTTurboModuleEnabled(void)
+{
+  return turboModuleEnabled;
+}
+
+void RCTEnableTurboModule(BOOL enabled) {
+  turboModuleEnabled = enabled;
 }
 
 #if RCT_DEBUG
@@ -96,6 +111,9 @@ void RCTVerifyAllModulesExported(NSArray *extraModules)
 
   for (unsigned int i = 0; i < classCount; i++) {
     Class cls = classes[i];
+    if (strncmp(class_getName(cls), "RCTCxxModule", strlen("RCTCxxModule")) == 0) {
+      continue;
+    }
     Class superclass = cls;
     while (superclass) {
       if (class_conformsToProtocol(superclass, @protocol(RCTBridgeModule))) {
@@ -115,7 +133,8 @@ void RCTVerifyAllModulesExported(NSArray *extraModules)
           break;
         }
 
-        RCTLogWarn(@"Class %@ was not exported. Did you forget to use RCT_EXPORT_MODULE()?", cls);
+        // Note: Some modules may be lazily loaded and not exported up front, so this message is no longer a warning.
+        RCTLogInfo(@"Class %@ was not exported. Did you forget to use RCT_EXPORT_MODULE()?", cls);
         break;
       }
       superclass = class_getSuperclass(superclass);
@@ -210,6 +229,11 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
   [self invalidate];
 }
 
+- (void)setRCTTurboModuleLookupDelegate:(id<RCTTurboModuleLookupDelegate>)turboModuleLookupDelegate
+{
+  [self.batchedBridge setRCTTurboModuleLookupDelegate:turboModuleLookupDelegate];
+}
+
 - (void)didReceiveReloadCommand
 {
   [self reload];
@@ -225,15 +249,24 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
   return [self.batchedBridge moduleForName:moduleName];
 }
 
+- (id)moduleForName:(NSString *)moduleName lazilyLoadIfNecessary:(BOOL)lazilyLoad
+{
+  return [self.batchedBridge moduleForName:moduleName lazilyLoadIfNecessary:lazilyLoad];
+}
+
 - (id)moduleForClass:(Class)moduleClass
 {
-  return [self moduleForName:RCTBridgeModuleNameForClass(moduleClass)];
+  id module = [self.batchedBridge moduleForClass:moduleClass];
+  if (!module) {
+    module = [self moduleForName:RCTBridgeModuleNameForClass(moduleClass)];
+  }
+  return module;
 }
 
 - (NSArray *)modulesConformingToProtocol:(Protocol *)protocol
 {
   NSMutableArray *modules = [NSMutableArray new];
-  for (Class moduleClass in self.moduleClasses) {
+  for (Class moduleClass in [self.moduleClasses copy]) {
     if ([moduleClass conformsToProtocol:protocol]) {
       id module = [self moduleForClass:moduleClass];
       if (module) {
@@ -249,11 +282,6 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
   return [self.batchedBridge moduleIsInitialized:moduleClass];
 }
 
-- (id)jsBoundExtraModuleForClass:(Class)moduleClass
-{
-  return [self.batchedBridge jsBoundExtraModuleForClass:moduleClass];
-}
-
 - (void)reload
 {
   #if RCT_ENABLE_INSPECTOR
@@ -267,7 +295,11 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
    * Any thread
    */
   dispatch_async(dispatch_get_main_queue(), ^{
+    // WARNING: Invalidation is async, so it may not finish before re-setting up the bridge,
+    // causing some issues. TODO: revisit this post-Fabric/TurboModule.
     [self invalidate];
+    // Reload is a special case, do not preserve launchOptions and treat reload as a fresh start
+    self->_launchOptions = nil;
     [self setUp];
   });
 }
@@ -341,6 +373,11 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
   }
 }
 
+- (void)updateModuleWithInstance:(id<RCTBridgeModule>)instance
+{
+  [self.batchedBridge updateModuleWithInstance:instance];
+}
+
 - (void)registerAdditionalModuleClasses:(NSArray<Class> *)modules
 {
   [self.batchedBridge registerAdditionalModuleClasses:modules];
@@ -364,22 +401,9 @@ RCT_NOT_IMPLEMENTED(- (instancetype)init)
   [self.batchedBridge enqueueCallback:cbID args:args];
 }
 
-- (JSValue *)callFunctionOnModule:(NSString *)module
-                           method:(NSString *)method
-                        arguments:(NSArray *)arguments
-                            error:(NSError **)error
-{
-  return [self.batchedBridge callFunctionOnModule:module method:method arguments:arguments error:error];
-}
-
 - (void)registerSegmentWithId:(NSUInteger)segmentId path:(NSString *)path
 {
   [self.batchedBridge registerSegmentWithId:segmentId path:path];
-}
-
-- (JSGlobalContextRef)jsContextRef
-{
-  return [self.batchedBridge jsContextRef];
 }
 
 @end

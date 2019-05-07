@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,6 +7,7 @@
 
 package com.facebook.react.views.art;
 
+import com.facebook.react.uimanager.ReactShadowNodeImpl;
 import javax.annotation.Nullable;
 
 import android.graphics.Canvas;
@@ -24,6 +25,8 @@ import com.facebook.react.uimanager.annotations.ReactProp;
 public class ARTGroupShadowNode extends ARTVirtualNode {
 
   protected @Nullable RectF mClipping;
+
+  public ARTGroupShadowNode() { }
 
   @ReactProp(name = "clipping")
   public void setClipping(@Nullable ReadableArray clippingDims) {

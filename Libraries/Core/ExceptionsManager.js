@@ -1,44 +1,65 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @providesModule ExceptionsManager
+ * @format
  * @flow
  */
+
 'use strict';
 
 import type {ExtendedError} from 'parseErrorStack';
+
+const INTERNAL_CALLSITES_REGEX = new RegExp(
+  [
+    '/Libraries/Renderer/oss/ReactNativeRenderer-dev\\.js$',
+    '/Libraries/BatchedBridge/MessageQueue\\.js$',
+  ].join('|'),
+);
 
 /**
  * Handles the developer-visible aspect of errors and exceptions
  */
 let exceptionID = 0;
-function reportException(e: ExtendedError, isFatal: bool) {
+function reportException(e: ExtendedError, isFatal: boolean) {
   const {ExceptionsManager} = require('NativeModules');
   if (ExceptionsManager) {
     const parseErrorStack = require('parseErrorStack');
     const stack = parseErrorStack(e);
     const currentExceptionID = ++exceptionID;
+    const message =
+      e.jsEngine == null ? e.message : `${e.message}, js engine: ${e.jsEngine}`;
     if (isFatal) {
-      ExceptionsManager.reportFatalException(e.message, stack, currentExceptionID);
+      ExceptionsManager.reportFatalException(
+        message,
+        stack,
+        currentExceptionID,
+      );
     } else {
-      ExceptionsManager.reportSoftException(e.message, stack, currentExceptionID);
+      ExceptionsManager.reportSoftException(message, stack, currentExceptionID);
     }
     if (__DEV__) {
       const symbolicateStackTrace = require('symbolicateStackTrace');
-      symbolicateStackTrace(stack).then(
-        (prettyStack) => {
+      symbolicateStackTrace(stack)
+        .then(prettyStack => {
           if (prettyStack) {
-            ExceptionsManager.updateExceptionMessage(e.message, prettyStack, currentExceptionID);
+            const stackWithoutInternalCallsites = prettyStack.filter(
+              frame => frame.file.match(INTERNAL_CALLSITES_REGEX) === null,
+            );
+            ExceptionsManager.updateExceptionMessage(
+              message,
+              stackWithoutInternalCallsites,
+              currentExceptionID,
+            );
           } else {
             throw new Error('The stack is null');
           }
-        }
-      ).catch(
-        (error) => console.warn('Unable to symbolicate stack trace: ' + error.message)
-      );
+        })
+        .catch(error =>
+          console.warn('Unable to symbolicate stack trace: ' + error.message),
+        );
     }
   }
 }
@@ -84,7 +105,7 @@ function reactConsoleErrorHandler() {
       // (Note: Logic duplicated in polyfills/console.js.)
       return;
     }
-    const error : ExtendedError = new Error('console.error: ' + str);
+    const error: ExtendedError = new Error('console.error: ' + str);
     error.framesToPop = 1;
     reportException(error, /* isFatal */ false);
   }
@@ -109,4 +130,4 @@ function installConsoleErrorReporter() {
   }
 }
 
-module.exports = { handleException, installConsoleErrorReporter };
+module.exports = {handleException, installConsoleErrorReporter};

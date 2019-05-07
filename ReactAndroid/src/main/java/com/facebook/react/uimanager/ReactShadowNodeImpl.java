@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -53,14 +53,21 @@ import javax.annotation.Nullable;
 @ReactPropertyHolder
 public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl> {
 
+  private static final YogaConfig sYogaConfig;
+
+  static {
+    sYogaConfig = ReactYogaConfigProvider.get();
+  }
+
   private int mReactTag;
   private @Nullable String mViewClassName;
-  private @Nullable ReactShadowNodeImpl mRootNode;
+  private int mRootTag;
   private @Nullable ThemedReactContext mThemedContext;
   private boolean mShouldNotifyOnLayout;
   private boolean mNodeUpdated = true;
   private @Nullable ArrayList<ReactShadowNodeImpl> mChildren;
   private @Nullable ReactShadowNodeImpl mParent;
+  private @Nullable ReactShadowNodeImpl mLayoutParent;
 
   // layout-only nodes
   private boolean mIsLayoutOnly;
@@ -71,24 +78,19 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
   private int mScreenY;
   private int mScreenWidth;
   private int mScreenHeight;
-  private final Spacing mDefaultPadding = new Spacing(0);
+  private final Spacing mDefaultPadding;
   private final float[] mPadding = new float[Spacing.ALL + 1];
   private final boolean[] mPaddingIsPercent = new boolean[Spacing.ALL + 1];
-  private final YogaNode mYogaNode;
-  private static YogaConfig sYogaConfig;
+  private YogaNode mYogaNode;
+  private Integer mWidthMeasureSpec;
+  private Integer mHeightMeasureSpec;
 
   public ReactShadowNodeImpl() {
+    mDefaultPadding = new Spacing(0);
     if (!isVirtual()) {
       YogaNode node = YogaNodePool.get().acquire();
-      if (sYogaConfig == null) {
-        sYogaConfig = new YogaConfig();
-        sYogaConfig.setPointScaleFactor(0f);
-        sYogaConfig.setUseLegacyStretchBehaviour(true);
-      }
-      if (node == null) {
-        node = new YogaNode(sYogaConfig);
-      }
-      mYogaNode = node;
+      mYogaNode = node == null ? YogaNode.create(sYogaConfig) : node;
+      mYogaNode.setData(this);
       Arrays.fill(mPadding, YogaConstants.UNDEFINED);
     } else {
       mYogaNode = null;
@@ -97,7 +99,8 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
 
   /**
    * Nodes that return {@code true} will be treated as "virtual" nodes. That is, nodes that are not
-   * mapped into native views (e.g. nested text node). By default this method returns {@code false}.
+   * mapped into native views or Yoga nodes (e.g. nested text node). By default this method returns
+   * {@code false}.
    */
   @Override
   public boolean isVirtual() {
@@ -106,9 +109,9 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
 
   /**
    * Nodes that return {@code true} will be treated as a root view for the virtual nodes tree. It
-   * means that {@link NativeViewHierarchyManager} will not try to perform {@code manageChildren}
-   * operation on such views. Good example is {@code InputText} view that may have children {@code
-   * Text} nodes but this whole hierarchy will be mapped to a single android {@link EditText} view.
+   * means that all of its descendants will be "virtual" nodes. Good example is {@code InputText}
+   * view that may have children {@code Text} nodes but this whole hierarchy will be mapped to a
+   * single android {@link EditText} view.
    */
   @Override
   public boolean isVirtualAnchor() {
@@ -124,6 +127,17 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
   @Override
   public boolean isYogaLeafNode() {
     return isMeasureDefined();
+  }
+
+  /**
+   * When constructing the native tree, nodes that return {@code true} will be treated as leaves.
+   * Instead of adding this view's native children as subviews of it, they will be added as subviews
+   * of an ancestor. In other words, this view wants to support native children but it cannot host
+   * them itself (e.g. it isn't a ViewGroup).
+   */
+  @Override
+  public boolean hoistNativeChildren() {
+    return false;
   }
 
   @Override
@@ -165,6 +179,18 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
   public void dirty() {
     if (!isVirtual()) {
       mYogaNode.dirty();
+    } else if (getParent() != null) {
+      // Virtual nodes aren't involved in layout but they need to have the dirty signal
+      // propagated to their ancestors.
+      //
+      // TODO: There are some edge cases that currently aren't supported. For example, if the size
+      //   of your inline image/view changes, its size on-screen is not be updated. Similarly,
+      //   if the size of a view inside of an inline view changes, its size on-screen is not
+      //   updated. The problem may be that dirty propagation stops at inline views because the
+      //   parent of each inline view is null. A possible fix would be to implement an `onDirty`
+      //   handler in Yoga that will propagate the dirty signal to the ancestors of the inline view.
+      //
+      getParent().dirty();
     }
   }
 
@@ -175,12 +201,8 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
 
   @Override
   public void addChildAt(ReactShadowNodeImpl child, int i) {
-    if (child.getParent() != null) {
-      throw new IllegalViewOperationException(
-        "Tried to add child that already has a parent! Remove it from its parent first.");
-    }
     if (mChildren == null) {
-      mChildren = new ArrayList<ReactShadowNodeImpl>(4);
+      mChildren = new ArrayList<>(4);
     }
     mChildren.add(i, child);
     child.mParent = this;
@@ -193,16 +215,16 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
         throw new RuntimeException(
             "Cannot add a child that doesn't have a YogaNode to a parent without a measure "
                 + "function! (Trying to add a '"
-                + child.getClass().getSimpleName()
+                + child.toString()
                 + "' to a '"
-                + getClass().getSimpleName()
+                + toString()
                 + "')");
       }
       mYogaNode.addChildAt(childYogaNode, i);
     }
     markUpdated();
 
-    int increase = child.isLayoutOnly() ? child.getTotalNativeChildren() : 1;
+    int increase = child.getTotalNativeNodeContributionToParent();
     mTotalNativeChildren += increase;
 
     updateNativeChildrenCountInParent(increase);
@@ -222,7 +244,7 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
     }
     markUpdated();
 
-    int decrease = removed.isLayoutOnly() ? removed.getTotalNativeChildren() : 1;
+    int decrease = removed.getTotalNativeNodeContributionToParent();
     mTotalNativeChildren -= decrease;
     updateNativeChildrenCountInParent(-decrease);
     return removed;
@@ -260,9 +282,8 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
       }
       ReactShadowNodeImpl toRemove = getChildAt(i);
       toRemove.mParent = null;
+      decrease += toRemove.getTotalNativeNodeContributionToParent();
       toRemove.dispose();
-
-      decrease += toRemove.isLayoutOnly() ? toRemove.getTotalNativeChildren() : 1;
     }
     Assertions.assertNotNull(mChildren).clear();
     markUpdated();
@@ -272,11 +293,11 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
   }
 
   private void updateNativeChildrenCountInParent(int delta) {
-    if (mIsLayoutOnly) {
+    if (getNativeKind() != NativeKind.PARENT) {
       ReactShadowNodeImpl parent = getParent();
       while (parent != null) {
         parent.mTotalNativeChildren += delta;
-        if (!parent.isLayoutOnly()) {
+        if (parent.getNativeKind() == NativeKind.PARENT) {
           break;
         }
         parent = parent.getParent();
@@ -290,7 +311,8 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
    * require layouting (marked with {@link #dirty()}).
    */
   @Override
-  public void onBeforeLayout() {}
+  public void onBeforeLayout(NativeViewHierarchyOptimizer nativeViewHierarchyOptimizer) {
+  }
 
   @Override
   public final void updateProperties(ReactStylesDiffMap props) {
@@ -319,7 +341,7 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
       float absoluteX,
       float absoluteY,
       UIViewOperationQueue uiViewOperationQueue,
-      NativeViewHierarchyOptimizer nativeViewHierarchyOptimizer) {
+      @Nullable NativeViewHierarchyOptimizer nativeViewHierarchyOptimizer) {
     if (mNodeUpdated) {
       onCollectExtraUpdates(uiViewOperationQueue);
     }
@@ -349,7 +371,18 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
       mScreenHeight = newScreenHeight;
 
       if (layoutHasChanged) {
-        nativeViewHierarchyOptimizer.handleUpdateLayout(this);
+        //TODO: T26400974 ReactShadowNode should not depend on nativeViewHierarchyOptimizer
+        if (nativeViewHierarchyOptimizer != null) {
+          nativeViewHierarchyOptimizer.handleUpdateLayout(this);
+        } else {
+          uiViewOperationQueue.enqueueUpdateLayout(
+            getParent().getReactTag(),
+            getReactTag(),
+            getScreenX(),
+            getScreenY(),
+            getScreenWidth(),
+            getScreenHeight());
+        }
       }
 
       return layoutHasChanged;
@@ -369,13 +402,14 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
   }
 
   @Override
-  public final ReactShadowNodeImpl getRootNode() {
-    return Assertions.assertNotNull(mRootNode);
+  public final int getRootTag() {
+    Assertions.assertCondition(mRootTag != 0);
+    return mRootTag;
   }
 
   @Override
-  public final void setRootNode(ReactShadowNodeImpl rootNode) {
-    mRootNode = rootNode;
+  public final void setRootTag(int rootTag) {
+    mRootTag = rootTag;
   }
 
   @Override
@@ -386,6 +420,17 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
   @Override
   public final @Nullable ReactShadowNodeImpl getParent() {
     return mParent;
+  }
+
+  // Returns the node that is responsible for laying out this node.
+  @Override
+  public final @Nullable ReactShadowNodeImpl getLayoutParent() {
+    return mLayoutParent != null ? mLayoutParent : getNativeParent();
+  }
+
+  @Override
+  public final void setLayoutParent(@Nullable ReactShadowNodeImpl layoutParent) {
+    mLayoutParent = layoutParent;
   }
 
   /**
@@ -411,7 +456,12 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
 
   @Override
   public void calculateLayout() {
-    mYogaNode.calculateLayout(YogaConstants.UNDEFINED, YogaConstants.UNDEFINED);
+    calculateLayout(YogaConstants.UNDEFINED, YogaConstants.UNDEFINED);
+  }
+
+  @Override
+  public void calculateLayout(float width, float height) {
+    mYogaNode.calculateLayout(width, height);
   }
 
   @Override
@@ -432,8 +482,8 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
    */
   @Override
   public final void addNativeChildAt(ReactShadowNodeImpl child, int nativeIndex) {
-    Assertions.assertCondition(!mIsLayoutOnly);
-    Assertions.assertCondition(!child.mIsLayoutOnly);
+    Assertions.assertCondition(getNativeKind() == NativeKind.PARENT);
+    Assertions.assertCondition(child.getNativeKind() != NativeKind.NONE);
 
     if (mNativeChildren == null) {
       mNativeChildren = new ArrayList<>(4);
@@ -495,6 +545,14 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
   }
 
   @Override
+  public NativeKind getNativeKind() {
+    return
+      isVirtual() || isLayoutOnly() ? NativeKind.NONE :
+      hoistNativeChildren() ? NativeKind.LEAF :
+      NativeKind.PARENT;
+  }
+
+  @Override
   public final int getTotalNativeChildren() {
     return mTotalNativeChildren;
   }
@@ -515,6 +573,19 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
     }
 
     return isDescendant;
+  }
+
+  private int getTotalNativeNodeContributionToParent() {
+    NativeKind kind = getNativeKind();
+    return
+      kind == NativeKind.NONE ? mTotalNativeChildren :
+      kind == NativeKind.LEAF ? 1 + mTotalNativeChildren :
+      1; // kind == NativeKind.PARENT
+  }
+
+  @Override
+  public String toString() {
+    return "[" + mViewClassName + " " + getReactTag() + "]";
   }
 
   /*
@@ -566,7 +637,7 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
         found = true;
         break;
       }
-      index += (current.isLayoutOnly() ? current.getTotalNativeChildren() : 1);
+      index += current.getTotalNativeNodeContributionToParent();
     }
     if (!found) {
       throw new RuntimeException(
@@ -895,11 +966,6 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
 
   @Override
   public void setMeasureFunction(YogaMeasureFunction measureFunction) {
-    if ((measureFunction == null ^ mYogaNode.isMeasureDefined()) && getChildCount() != 0) {
-      throw new RuntimeException(
-          "Since a node with a measure function does not add any native yoga children, it's "
-              + "not safe to transition to/from having a measure function unless a node has no children");
-    }
     mYogaNode.setMeasureFunction(measureFunction);
   }
 
@@ -909,32 +975,35 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
   }
 
   @Override
-  public String toString() {
+  public String getHierarchyInfo() {
     StringBuilder sb = new StringBuilder();
-    toStringWithIndentation(sb, 0);
+    getHierarchyInfoWithIndentation(sb, 0);
     return sb.toString();
   }
 
-  private void toStringWithIndentation(StringBuilder result, int level) {
+  private void getHierarchyInfoWithIndentation(StringBuilder result, int level) {
     // Spaces and tabs are dropped by IntelliJ logcat integration, so rely on __ instead.
     for (int i = 0; i < level; ++i) {
-      result.append("__");
+      result.append("  ");
     }
 
-    result.append(getClass().getSimpleName()).append(" ");
+    result.append("<").append(getClass().getSimpleName()).append(" view='").append(getViewClass())
+      .append("' tag=").append(getReactTag());
     if (mYogaNode != null) {
-      result.append(getLayoutWidth()).append(",").append(getLayoutHeight());
+      result.append(" layout='x:").append(getScreenX())
+        .append(" y:").append(getScreenY()).append(" w:").append(getLayoutWidth()).append(" h:")
+        .append(getLayoutHeight()).append("'");
     } else {
       result.append("(virtual node)");
     }
-    result.append("\n");
+    result.append(">\n");
 
     if (getChildCount() == 0) {
       return;
     }
 
     for (int i = 0; i < getChildCount(); i++) {
-      getChildAt(i).toStringWithIndentation(result, level + 1);
+      getChildAt(i).getHierarchyInfoWithIndentation(result, level + 1);
     }
   }
 
@@ -944,5 +1013,30 @@ public class ReactShadowNodeImpl implements ReactShadowNode<ReactShadowNodeImpl>
       mYogaNode.reset();
       YogaNodePool.get().release(mYogaNode);
     }
+  }
+
+  @Override
+  public void setMeasureSpecs(int widthMeasureSpec, int heightMeasureSpec) {
+    mWidthMeasureSpec = widthMeasureSpec;
+    mHeightMeasureSpec = heightMeasureSpec;
+  }
+
+  @Override
+  public Integer getWidthMeasureSpec() {
+    return mWidthMeasureSpec;
+  }
+
+  @Override
+  public Integer getHeightMeasureSpec() {
+    return mHeightMeasureSpec;
+  }
+
+  @Override
+  public Iterable<? extends ReactShadowNode> calculateLayoutOnChildren() {
+    return isVirtualAnchor() ?
+        // All of the descendants are virtual so none of them are involved in layout.
+        null :
+        // Just return the children. Flexbox calculations have already been run on them.
+        mChildren;
   }
 }

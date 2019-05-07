@@ -1,23 +1,22 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @providesModule DimensionsExample
+ * @format
  * @flow
  */
+
 'use strict';
 
 const React = require('react');
-const ReactNative = require('react-native');
-const {
-  Dimensions,
-  Text,
-  View
-} = ReactNative;
+const {Dimensions, Text, View} = require('react-native');
 
-class DimensionsSubscription extends React.Component<{dim: string}, {dims: Object}> {
+class DimensionsSubscription extends React.Component<
+  {dim: string},
+  {dims: Object},
+> {
   state = {
     dims: Dimensions.get(this.props.dim),
   };
@@ -30,7 +29,7 @@ class DimensionsSubscription extends React.Component<{dim: string}, {dims: Objec
     Dimensions.removeEventListener('change', this._handleDimensionsChange);
   }
 
-  _handleDimensionsChange = (dimensions) => {
+  _handleDimensionsChange = dimensions => {
     this.setState({
       dims: dimensions[this.props.dim],
     });
@@ -50,10 +49,14 @@ exports.description = 'Dimensions of the viewport';
 exports.examples = [
   {
     title: 'window',
-    render(): React.Element<any> { return <DimensionsSubscription dim="window" />; }
+    render(): React.Element<any> {
+      return <DimensionsSubscription dim="window" />;
+    },
   },
   {
     title: 'screen',
-    render(): React.Element<any> { return <DimensionsSubscription dim="screen" />; }
+    render(): React.Element<any> {
+      return <DimensionsSubscription dim="screen" />;
+    },
   },
 ];

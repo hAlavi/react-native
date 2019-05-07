@@ -1,26 +1,28 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @providesModule ReactNativeViewAttributes
- * @flow
+ * @flow strict-local
+ * @format
  */
+
 'use strict';
 
-var ReactNativeStyleAttributes = require('ReactNativeStyleAttributes');
+const ReactNativeStyleAttributes = require('ReactNativeStyleAttributes');
 
-var ReactNativeViewAttributes = {};
+const ReactNativeViewAttributes = {};
 
 ReactNativeViewAttributes.UIView = {
   pointerEvents: true,
   accessible: true,
   accessibilityActions: true,
   accessibilityLabel: true,
-  accessibilityComponentType: true,
   accessibilityLiveRegion: true,
-  accessibilityTraits: true,
+  accessibilityRole: true,
+  accessibilityStates: true,
+  accessibilityHint: true,
   importantForAccessibility: true,
   nativeID: true,
   testID: true,
@@ -30,6 +32,7 @@ ReactNativeViewAttributes.UIView = {
   onAccessibilityAction: true,
   onAccessibilityTap: true,
   onMagicTap: true,
+  onAccessibilityEscape: true,
   collapsable: true,
   needsOffscreenAlphaCompositing: true,
   style: ReactNativeStyleAttributes,

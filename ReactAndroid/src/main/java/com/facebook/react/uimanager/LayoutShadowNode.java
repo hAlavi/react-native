@@ -1,4 +1,7 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+// Copyright (c) Facebook, Inc. and its affiliates.
+
+// This source code is licensed under the MIT license found in the
+// LICENSE file in the root directory of this source tree.
 
 package com.facebook.react.uimanager;
 
@@ -37,6 +40,13 @@ public class LayoutShadowNode extends ReactShadowNodeImpl {
     float value;
     YogaUnit unit;
 
+    private MutableYogaValue() { }
+
+    private MutableYogaValue(MutableYogaValue mutableYogaValue) {
+      this.value = mutableYogaValue.value;
+      this.unit = mutableYogaValue.unit;
+    }
+
     void setFromDynamic(Dynamic dynamic) {
       if (dynamic.isNull()) {
         unit = YogaUnit.UNDEFINED;
@@ -59,7 +69,11 @@ public class LayoutShadowNode extends ReactShadowNodeImpl {
     }
   }
 
-  private final MutableYogaValue mTempYogaValue = new MutableYogaValue();
+  private final MutableYogaValue mTempYogaValue;
+
+  public LayoutShadowNode() {
+    mTempYogaValue = new MutableYogaValue();
+  }
 
   @ReactProp(name = ViewProps.WIDTH)
   public void setWidth(Dynamic width) {
@@ -102,6 +116,12 @@ public class LayoutShadowNode extends ReactShadowNodeImpl {
     }
 
     minWidth.recycle();
+  }
+
+  boolean mCollapsable;
+  @ReactProp(name = "collapsable")
+  public void setCollapsable(boolean collapsable) {
+    mCollapsable = collapsable;
   }
 
   @ReactProp(name = ViewProps.MAX_WIDTH)
@@ -292,6 +312,10 @@ public class LayoutShadowNode extends ReactShadowNodeImpl {
       }
       case "wrap": {
         setFlexWrap(YogaWrap.WRAP);
+        break;
+      }
+      case "wrap-reverse": {
+        setFlexWrap(YogaWrap.WRAP_REVERSE);
         break;
       }
       default: {
@@ -502,7 +526,6 @@ public class LayoutShadowNode extends ReactShadowNodeImpl {
     if (isVirtual()) {
       return;
     }
-
     if (overflow == null) {
       setOverflow(YogaOverflow.VISIBLE);
       return;

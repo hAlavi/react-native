@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -13,6 +13,7 @@
 #import <React/RCTNetworking.h>
 #import <React/RCTUtils.h>
 #import <React/RCTWebSocketModule.h>
+#import "RCTBlobCollector.h"
 
 static NSString *const kBlobURIScheme = @"blob";
 
@@ -33,6 +34,7 @@ static NSString *const kBlobURIScheme = @"blob";
 RCT_EXPORT_MODULE(BlobModule)
 
 @synthesize bridge = _bridge;
+@synthesize methodQueue = _methodQueue;
 
 - (void)setBridge:(RCTBridge *)bridge
 {
@@ -40,6 +42,8 @@ RCT_EXPORT_MODULE(BlobModule)
 
   std::lock_guard<std::mutex> lock(_blobsMutex);
   _blobs = [NSMutableDictionary new];
+
+  facebook::react::RCTBlobCollector::install(self);
 }
 
 + (BOOL)requiresMainQueueSetup
@@ -48,6 +52,11 @@ RCT_EXPORT_MODULE(BlobModule)
 }
 
 - (NSDictionary<NSString *, id> *)constantsToExport
+{
+  return [self getConstants];
+}
+
+- (NSDictionary<NSString *, id> *)getConstants
 {
   return @{
     @"BLOB_URI_SCHEME": kBlobURIScheme,
@@ -258,6 +267,9 @@ RCT_EXPORT_METHOD(release:(NSString *)blobId)
 
 - (id)handleNetworkingResponse:(NSURLResponse *)response data:(NSData *)data
 {
+  // An empty body will have nil for data, in this case we need to return
+  // an empty blob as per the XMLHttpRequest spec.
+  data = data ?: [NSData new];
   return @{
     @"blobId": [self store:data],
     @"offset": @0,

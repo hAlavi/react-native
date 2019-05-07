@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -20,6 +20,8 @@ import com.facebook.react.uimanager.ReactShadowNodeImpl;
  * fill the window.
  */
 class ModalHostShadowNode extends LayoutShadowNode {
+
+  public ModalHostShadowNode() {}
 
   /**
    * We need to set the styleWidth and styleHeight of the one child (represented by the <View/>

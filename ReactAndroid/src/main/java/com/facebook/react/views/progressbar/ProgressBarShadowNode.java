@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,22 +7,19 @@
 
 package com.facebook.react.views.progressbar;
 
-import javax.annotation.Nullable;
-
-import java.util.HashSet;
-import java.util.Set;
-
 import android.util.SparseIntArray;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ProgressBar;
-
-import com.facebook.yoga.YogaMeasureMode;
-import com.facebook.yoga.YogaMeasureFunction;
-import com.facebook.yoga.YogaNode;
-import com.facebook.yoga.YogaMeasureOutput;
 import com.facebook.react.uimanager.LayoutShadowNode;
 import com.facebook.react.uimanager.annotations.ReactProp;
+import com.facebook.yoga.YogaMeasureFunction;
+import com.facebook.yoga.YogaMeasureMode;
+import com.facebook.yoga.YogaMeasureOutput;
+import com.facebook.yoga.YogaNode;
+import java.util.HashSet;
+import java.util.Set;
+import javax.annotation.Nullable;
 
 /**
  * Node responsible for holding the style of the ProgressBar, see under
@@ -33,11 +30,18 @@ public class ProgressBarShadowNode extends LayoutShadowNode implements YogaMeasu
 
   private String mStyle = ReactProgressBarViewManager.DEFAULT_STYLE;
 
-  private final SparseIntArray mHeight = new SparseIntArray();
-  private final SparseIntArray mWidth = new SparseIntArray();
-  private final Set<Integer> mMeasured = new HashSet<>();
+  private final SparseIntArray mHeight;
+  private final SparseIntArray mWidth;
+  private final Set<Integer> mMeasured;
 
   public ProgressBarShadowNode() {
+    mHeight = new SparseIntArray();
+    mWidth = new SparseIntArray();
+    mMeasured = new HashSet<>();
+    initMeasureFunction();
+  }
+
+  private void initMeasureFunction() {
     setMeasureFunction(this);
   }
 
